@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="box">
+	<h1>Share</h1>
+    <table class="table">
+
+      <thead>
+        <tr>
+          <th scope="col">#</th>
+          <th scope="col">Nazwa</th>
+          <th scope="col">ISIN</th>
+          <th scope="col">Cena</th>
+          {% for client in all_clients %}
+          <th scope="col">{{client.client_name}}</th>
+          {% endfor %}
+        </tr>
+      </thead>
+
+      <tbody>
+        {% for asset in all_assets %}
+            <tr>
+              <th scope="row">{{ asset.id }}</th>
+              <td>{{ asset.asset_name }}</td>
+              <td>{{ asset.isin }}</td>
+              <td>{{ asset.price }}</td>
+              {% for client in all_clients %}
+                {% for holding in all_holdings %}
+                {% if client.id == holding.client_id and asset.id == holding.asset_id %}
+                {% for record in records %}
+                {% if record[0] == client.client_name %}
+                <td>{{ '{:.2%}'.format((holding.quantity * asset.price)/record[1], 2) }}</td>
+                {% endif %}
+                {% endfor %}
+                {% endif %}
+                {% endfor %}
+              {% endfor %}
+            </tr>
+        {% endfor %}
+        <tr>
+          <th scope="row">#</th>
+          <td> </td>
+          <td>TOTAL NAV</td>
+          <td> </td>
+          {% for client in all_clients %}
+          {% for record in records %}
+            {% if client.client_name == record[0] %}
+            <td>{{ '{:.2f}'.format(record[1]) }}</td>
+            {% endif %}
+          {% endfor %}
+          {% endfor %}
+        </tr>
+      </tbody>
+    </table>
+
+</div>
+
+{% endblock %}

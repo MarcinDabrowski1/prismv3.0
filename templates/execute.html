@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+{% import "bootstrap/wtf.html" as wtf %}
+{% block content %}
+
+<div>
+	<h1>Execute</h1>
+	<table class="table">
+		<thead>
+			<tr>
+				{% for client in all_clients %}
+				  <th scope="col">{{client.client_name}}</th>
+				{% endfor %}
+				<th scope="col">Asset</th>
+				<th scope="col">Total order</th>
+			</tr>
+		</thead>
+
+		<tbody>
+            <tr>
+              {% for column in order_execute %}
+              <th scope="row">{{ order_execute[column] }}</th>
+              {% endfor %}
+            </tr>
+		</tbody>
+	</table>
+
+	<h1>Assets before executed order</h1>
+	<table class="table">
+		<thead>
+			<tr>
+				{% for client in all_clients %}
+					<th scope="col">{{client.client_name}}</th>
+				{% endfor %}
+				<th scope="col">Asset</th>
+			</tr>
+		</thead>
+
+		<tbody>
+            <tr>
+				{% for client in all_clients %}
+					<th scope="row">{{asset_holding[client.client_name]}}</th>
+				{% endfor %}
+					<th scope="row">{{asset.asset_name}}</th>
+            </tr>
+		</tbody>
+	</table>
+
+	<h1>Assets after executed order</h1>
+	<table class="table">
+		<thead>
+			<tr>
+				{% for client in all_clients %}
+					<th scope="col">{{client.client_name}}</th>
+				{% endfor %}
+				<th scope="col">Asset</th>
+			</tr>
+		</thead>
+
+		<tbody>
+            <tr>
+				{% for client in all_clients %}
+					<th scope="row">{{asset_holding[client.client_name] + order_execute[client.client_name]}}</th>
+				{% endfor %}
+					<th scope="row">{{asset.asset_name}}</th>
+            </tr>
+		</tbody>
+	</table>
+
+	<h1>Share after executed order</h1>
+	<table class="table">
+		<thead>
+			<tr>
+				{% for client in all_clients %}
+					<th scope="col">{{client.client_name}}</th>
+				{% endfor %}
+				<th scope="col">Asset</th>
+			</tr>
+		</thead>
+
+		<tbody>
+            <tr>
+				{% for client in all_clients %}
+				{% for record in records %}
+					{% if record[0] == client.client_name %}
+					<th scope="row">{{ '{:.2%}'.format((asset_holding[client.client_name] + order_execute[client.client_name])*asset.price / record[1], 2)}}</th>
+					{% endif %}
+				{% endfor %}
+				{% endfor %}
+					<th scope="row">{{asset.asset_name}}</th>
+            </tr>
+		</tbody>
+	</table>
+
+	<form method="post">
+          {% for client in all_clients %}
+          <label> {{client.client_name}} </label>
+          <input type="number"  value="{{ order_execute[client.client_name] }}" name="{{ client.client_name }}"/> <br>
+          {% endfor %}
+		  <label> PRICE </label>
+		  <input type="number" step="0.01" value="{{ order_execute['price'] }}" name="price"/> <br>
+		  <label> ACCOUNT </label>
+		  <input type="text" value="{{ order_execute['account'] }}" name="account"/> <br>
+          <input type="submit" value="Refresh" name="Refresh"/>
+          <input type="submit" value="Execute" name="Execute"/>
+	</form>
+
+
+</div>
+
+{% endblock %}
