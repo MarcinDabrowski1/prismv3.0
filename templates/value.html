@@ -39,9 +39,9 @@
           <td>TOTAL NAV</td>
           <td> </td>
           {% for client in all_clients %}
-          {% for record in records %}
-            {% if client.client_name == record[0] %}
-            <td>{{ '{:.2f}'.format(record[1]) }}</td>
+          {% for name in records.keys() %}
+            {% if client.client_name == name %}
+            <td>{{ '{:.2f}'.format(records[name]) }}</td>
             {% endif %}
           {% endfor %}
           {% endfor %}

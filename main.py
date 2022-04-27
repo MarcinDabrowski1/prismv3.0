@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, url_for
+from flask import Flask, render_template, request, url_for, jsonify
 from flask_sqlalchemy import SQLAlchemy
 import pandas as pd
 import sqlite3
@@ -9,7 +9,7 @@ from wtforms import StringField, SubmitField, SelectField
 from wtforms.validators import DataRequired
 from requests.structures import CaseInsensitiveDict
 import requests
-
+import datetime
 
 app = Flask(__name__)
 bootstrap = Bootstrap(app)
@@ -23,13 +23,13 @@ db = SQLAlchemy(app)
 
 class Client(db.Model):
     __tablename__ = "clients"
-    id = db.Column(db.Integer, primary_key=True)
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     client_name = db.Column(db.String(50))
 
 
 class Asset(db.Model):
     __tablename__ = "assets"
-    id = db.Column(db.Integer, primary_key=True)
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     isin = db.Column(db.String(10))
     asset_name = db.Column(db.String(50))
     price = db.Column(db.Float)
@@ -39,14 +39,37 @@ class Asset(db.Model):
 
 class Holding(db.Model):
     __tablename__ = "holdings"
-    id = db.Column(db.Integer, primary_key=True)
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     quantity = db.Column(db.Float)
     client_id = db.Column(db.Integer, db.ForeignKey('clients.id'), primary_key=True)
     asset_id = db.Column(db.Integer, db.ForeignKey('assets.id'), primary_key=True)
 
 
-db.create_all()
+class Ticket(db.Model):
+    __tablename__ = "ticket"
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    asset_id = db.Column(db.Integer, db.ForeignKey('assets.id'), primary_key=True)
+    client_id = db.Column(db.Integer, db.ForeignKey('clients.id'), primary_key=True)
+    quantity = db.Column(db.Float)
+    price = db.Column(db.Float)
+    type = db.Column(db.String(50))
+    account = db.Column(db.String(3))
+    ticket_time = db.Column(db.DateTime)
 
+
+class Orders(db.Model):
+    __tablename__ = "orders"
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    asset_id = db.Column(db.Integer, db.ForeignKey('assets.id'), primary_key=True)
+    client_id = db.Column(db.Integer, db.ForeignKey('clients.id'), primary_key=True)
+    quantity = db.Column(db.Float)
+    price = db.Column(db.Float)
+    account = db.Column(db.String(3))
+    type = db.Column(db.String(50))
+    ticket_time = db.Column(db.DateTime)
+
+
+db.create_all()
 
 sqliteConnection = sqlite3.connect('prism.db')
 cursor = sqliteConnection.cursor()
@@ -56,12 +79,13 @@ JOIN holdings on holdings.client_id = clients.id
 JOIN assets on assets.id = holdings.asset_id
 GROUP BY client_name;"""
 cursor.execute(sqlite_select_query)
-total_nav = cursor.fetchall()
+data = cursor.fetchall()
+
+total_nav = {element[0]: element[1] for element in data}
 
 all_holdings = db.session.query(Holding).all()
 all_clients = db.session.query(Client).all()
 all_assets = db.session.query(Asset).all()
-
 
 sql_query = pd.read_sql_query("""SELECT asset_name FROM assets;""", 'sqlite:///prism.db')
 df = pd.DataFrame(sql_query)
@@ -83,59 +107,98 @@ class EvenForm(FlaskForm):
 @app.route("/", methods=['GET', 'POST'])
 def home():
     all_holdings = db.session.query(Holding).all()
-    return render_template("index.html", all_holdings=all_holdings, all_clients=all_clients, all_assets=all_assets, records=total_nav)
+
+    return render_template("index.html",
+                           all_holdings=all_holdings,
+                           all_clients=all_clients,
+                           all_assets=all_assets,
+                           records=total_nav
+                           )
 
 
 @app.route("/value", methods=['GET', 'POST'])
 def value():
     all_holdings = db.session.query(Holding).all()
-    return render_template("value.html", all_holdings=all_holdings, all_clients=all_clients, all_assets=all_assets, records=total_nav)
+
+    return render_template("value.html",
+                           all_holdings=all_holdings,
+                           all_clients=all_clients,
+                           all_assets=all_assets,
+                           records=total_nav
+                           )
 
 
 @app.route("/share", methods=['GET', 'POST'])
 def share():
     all_holdings = db.session.query(Holding).all()
-    return render_template("share.html", all_holdings=all_holdings, all_clients=all_clients, all_assets=all_assets, records=total_nav)
+
+    return render_template("share.html",
+                           all_holdings=all_holdings,
+                           all_clients=all_clients,
+                           all_assets=all_assets,
+                           records=total_nav
+                           )
 
 
 @app.route("/order", methods=["GET", "POST"])
 def order():
-    all_holdings = db.session.query(Holding).all()
     form = EvenForm()
-    order_ticket = {}
+    all_tickets = db.session.query(Ticket).all()
+    for element in all_tickets:
+        db.session.delete(element)
+        db.session.commit()
+
     if form.validate_on_submit():
         asset = Asset.query.filter_by(asset_name=form.asset.data).first()
         for client in all_clients:
             holding = Holding.query.filter_by(asset_id=asset.id, client_id=client.id).first()
+
             if form.type.data == "Buy/sell %":
-                print(total_nav)
-                for nav in total_nav:
-                    if nav[0] == client.client_name:
-                        order_ticket[client.client_name] = round(float(form.quantity.data)/100 * float(nav[1]) / float(form.price.data))
+                for nav in total_nav.keys():
+                    if nav == client.client_name:
+                        ticket_time = datetime.datetime.now()
+                        ticket = Ticket(client_id=client.id,
+                                        asset_id=asset.id,
+                                        price=form.price.data,
+                                        quantity=round(float(form.quantity.data)/100 * float(total_nav[nav]) / float(form.price.data)),
+                                        account=form.account.data,
+                                        type=form.type.data,
+                                        ticket_time=ticket_time
+                                        )
+                        db.session.add(ticket)
+                        db.session.commit()
+
             elif form.type.data == "Adjust to %":
-                for nav in total_nav:
-                    if nav[0] == client.client_name:
-                        order_ticket[client.client_name] = round(
-                            (float(form.quantity.data)/100 - float(holding.quantity) * float(asset.price) / float(nav[1])) * float(nav[1]) / float(asset.price)
-                        )
+                for name in total_nav.keys():
+                    if name == client.client_name:
+                        ticket_time = datetime.datetime.now()
+                        ticket = Ticket(client_id=client.id,
+                                        asset_id=asset.id,
+                                        price=form.price.data,
+                                        quantity=round((float(form.quantity.data)/100 - float(holding.quantity) * float(asset.price) / float(total_nav[name])) * float(total_nav[name]) / float(asset.price)),
+                                        account=form.account.data,
+                                        type=form.type.data,
+                                        ticket_time=ticket_time
+                                        )
+                        db.session.add(ticket)
+                        db.session.commit()
+
             else:
-                nav_all_clients = 0
-                for nav in total_nav:
-                    nav_all_clients += float(nav[1])
+                nav_all_clients = sum(total_nav.values())
                 order_percent = float(form.quantity.data) * float(asset.price) / nav_all_clients
-                print(order_percent)
-                print(nav_all_clients)
-                for nav in total_nav:
-                    if nav[0] == client.client_name:
-                        order_ticket[client.client_name] = round(order_percent * float(nav[1]) / float(asset.price))
-                print("Split evenly nominal")
-        order_ticket["asset"] = form.asset.data,
-        order_ticket["price"] = form.price.data,
-        order_ticket["account"] = form.account.data,
-        order_ticket["quantity"] = form.quantity.data,
-        order_ticket["type"] = form.type.data
-        order_ticket_csv = pd.DataFrame(order_ticket, index=[0])
-        order_ticket_csv.to_csv("order.csv")
+                for name in total_nav.keys():
+                    if name == client.client_name:
+                        ticket_time = datetime.datetime.now()
+                        ticket = Ticket(client_id=client.id,
+                                        asset_id=asset.id,
+                                        price=form.price.data,
+                                        quantity=round(order_percent * float(total_nav[name]) / float(asset.price)),
+                                        account=form.account.data,
+                                        type=form.type.data,
+                                        ticket_time = datetime.datetime.now()
+                                        )
+                        db.session.add(ticket)
+                        db.session.commit()
 
         return redirect(url_for("execute"))
     return render_template("order.html", form=form)
@@ -144,54 +207,60 @@ def order():
 @app.route("/execute", methods=["GET", "POST"])
 def execute():
     all_holdings = db.session.query(Holding).all()
-    order_ticket = pd.read_csv('order.csv')
-    order_execute = {}
+    ticket = db.session.query(Ticket).all()
     total_order = 0
-    for client in all_clients:
-        order_execute[client.client_name] = float(order_ticket[client.client_name].to_string().split('   ')[1])
-        total_order += float(order_ticket[client.client_name].to_string().split('   ')[1])
-    order_execute["asset"] = order_ticket["asset"].to_string().split('    ')[1]
-    order_execute["price"] = float(order_ticket["price"].to_string().split('    ')[1])
-    order_execute["account"] = order_ticket["account"].to_string().split('    ')[1]
-
-    asset = Asset.query.filter_by(asset_name=order_execute["asset"]).first()
+    for execution in ticket:
+        total_order += execution.quantity
+    first_execution = db.session.query(Ticket).first()
+    asset = Asset.query.filter_by(id=first_execution.asset_id).first()
     asset_holding = {}
     for client in all_clients:
         asset_holding[client.client_name] = Holding.query.filter_by(asset_id=asset.id, client_id=client.id).first().quantity
 
+    order_execute = {}
     if request.method == "POST":
         if request.form.get('Refresh') == 'Refresh':
-            total_order = 0
             for client in all_clients:
-                order_execute[client.client_name] = float(request.form.get(client.client_name))
-                total_order += float(request.form.get(client.client_name))
-            order_execute["total_order"] = total_order
+                ticket_to_update = Ticket.query.filter_by(client_id = client.id).first()
+                ticket_to_update.quantity = float(request.form.get(client.client_name))
+                ticket_to_update.price = float(request.form.get("price"))
+                db.session.commit()
 
-            order_ticket["asset"] = order_execute["asset"]
-            order_ticket["quantity"] = total_order
-            for client in all_clients:
-                order_ticket[client.client_name] = order_execute[client.client_name]
-
-            order_ticket_csv = pd.DataFrame(order_ticket, index=[0])
-            order_ticket_csv.to_csv("order.csv")
             return render_template("execute.html",
                                    all_holdings=all_holdings,
                                    all_clients=all_clients,
                                    all_assets=all_assets,
                                    order_execute=order_execute,
-                                   asset=asset,
                                    asset_holding=asset_holding,
-                                   records=total_nav
-                               )
+                                   records=total_nav,
+                                   ticket=ticket,
+                                   first_execution=first_execution,
+                                   asset=asset,
+                                   total_order=total_order
+                                   )
 
         elif request.form.get("Execute") == "Execute":
             for client in all_clients:
-                holding_to_update = Holding.query.filter_by(asset_id=asset.id, client_id=client.id).first()
-                holding_to_update.quantity += order_execute[client.client_name]
-                account_id = Asset.query.filter_by(asset_name=order_execute["account"]).first()
-                account_to_update = Holding.query.filter_by(asset_id=account_id.id, client_id=client.id).first()
-                account_to_update.quantity -= order_execute[client.client_name] * float(request.form.get("price"))
-                db.session.commit()
+                for execution in ticket:
+                    if execution.client_id == client.id:
+                        order = Orders(
+                            asset_id=asset.id,
+                            client_id=client.id,
+                            quantity=execution.quantity,
+                            price=execution.price,
+                            account=execution.account,
+                            type=execution.type,
+                            ticket_time=execution.ticket_time
+                        )
+                        db.session.add(order)
+                        db.session.commit()
+
+                        holding_to_update = Holding.query.filter_by(asset_id=asset.id, client_id=client.id).first()
+                        holding_to_update.quantity += execution.quantity
+                        account_id = Asset.query.filter_by(asset_name=execution.account).first()
+                        account_to_update = Holding.query.filter_by(asset_id=account_id.id, client_id=client.id).first()
+                        account_to_update.quantity -= execution.quantity * float(request.form.get("price"))
+                        db.session.commit()
 
             return render_template("index.html",
                                    all_holdings=all_holdings,
@@ -208,9 +277,12 @@ def execute():
                            all_clients=all_clients,
                            all_assets=all_assets,
                            order_execute=order_execute,
-                           asset=asset,
                            asset_holding=asset_holding,
-                           records=total_nav
+                           records=total_nav,
+                           ticket=ticket,
+                           first_execution=first_execution,
+                           asset=asset,
+                           total_order=total_order
                            )
 
 
@@ -223,9 +295,10 @@ def refresh():
         headers["X-API-KEY"] = "S9XL6pukZo6wWwNB3lO4e7DGMZy5I6jjdUcZ3hx9"
         resp = requests.get(url, headers=headers)
         resp.raise_for_status()
-        # data = resp.json()
+        yahoo_data = resp.json()
         try:
-            asset.price = data["quoteResponse"]["result"][0]["regularMarketPrice"]
+            asset.price = yahoo_data["quoteResponse"]["result"][0]["regularMarketPrice"]
+
         except:
             pass
         db.session.commit()

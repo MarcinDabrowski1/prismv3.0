@@ -27,9 +27,9 @@
               {% for client in all_clients %}
                 {% for holding in all_holdings %}
                 {% if client.id == holding.client_id and asset.id == holding.asset_id %}
-                {% for record in records %}
-                {% if record[0] == client.client_name %}
-                <td>{{ '{:.2%}'.format((holding.quantity * asset.price)/record[1], 2) }}</td>
+                {% for name in records.keys() %}
+                {% if name == client.client_name %}
+                <td>{{ '{:.2%}'.format((holding.quantity * asset.price)/records[name], 2) }}</td>
                 {% endif %}
                 {% endfor %}
                 {% endif %}
@@ -43,9 +43,9 @@
           <td>TOTAL NAV</td>
           <td> </td>
           {% for client in all_clients %}
-          {% for record in records %}
-            {% if client.client_name == record[0] %}
-            <td>{{ '{:.2f}'.format(record[1]) }}</td>
+          {% for name in records.keys() %}
+            {% if client.client_name == name %}
+            <td>{{ '{:.2f}'.format(records[name]) }}</td>
             {% endif %}
           {% endfor %}
           {% endfor %}
