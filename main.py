@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, url_for, jsonify
+from flask import Flask, render_template, request, url_for
 from flask_sqlalchemy import SQLAlchemy
 import pandas as pd
 import sqlite3
