@@ -27,7 +27,7 @@
               {% for client in all_clients %}
                 {% for holding in all_holdings %}
                 {% if client.id == holding.client_id and asset.id == holding.asset_id %}
-                <td>{{ '{:.2f}'.format(holding.quantity * asset.price, 2) }}</td>
+                <td>{{ '{:.2f}'.format(holding.quantity * asset.price_PLN , 2) }}</td>
                 {% endif %}
                 {% endfor %}
               {% endfor %}

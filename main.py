@@ -35,6 +35,7 @@ class Asset(db.Model):
     price = db.Column(db.Float)
     currency = db.Column(db.String(3))
     yahoo_api = db.Column(db.String(10))
+    price_PLN = db.Column(db.Float)
 
 
 class Holding(db.Model):
@@ -71,9 +72,16 @@ class Orders(db.Model):
 
 db.create_all()
 
+all_assets = db.session.query(Asset).all()
+for asset in all_assets:
+    asset_currency = Asset.query.filter_by(asset_name=asset.currency).first()
+    asset.price_PLN = asset.price * asset_currency.price
+    db.session.commit()
+
+
 sqliteConnection = sqlite3.connect('prism.db')
 cursor = sqliteConnection.cursor()
-sqlite_select_query = """SELECT client_name, SUM(quantity*price)
+sqlite_select_query = """SELECT client_name, SUM(quantity*price_PLN)
 FROM clients
 JOIN holdings on holdings.client_id = clients.id
 JOIN assets on assets.id = holdings.asset_id
@@ -160,7 +168,8 @@ def order():
                         ticket = Ticket(client_id=client.id,
                                         asset_id=asset.id,
                                         price=form.price.data,
-                                        quantity=round(float(form.quantity.data)/100 * float(total_nav[nav]) / float(form.price.data)),
+                                        quantity=round(float(form.quantity.data)/100 * float(total_nav[nav]) /
+                                                       float(form.price.data)),
                                         account=form.account.data,
                                         type=form.type.data,
                                         ticket_time=ticket_time
@@ -175,7 +184,9 @@ def order():
                         ticket = Ticket(client_id=client.id,
                                         asset_id=asset.id,
                                         price=form.price.data,
-                                        quantity=round((float(form.quantity.data)/100 - float(holding.quantity) * float(asset.price) / float(total_nav[name])) * float(total_nav[name]) / float(asset.price)),
+                                        quantity=round((float(form.quantity.data)/100 - float(holding.quantity) *
+                                                        float(asset.price) / float(total_nav[name])) *
+                                                       float(total_nav[name]) / float(asset.price)),
                                         account=form.account.data,
                                         type=form.type.data,
                                         ticket_time=ticket_time
@@ -195,7 +206,7 @@ def order():
                                         quantity=round(order_percent * float(total_nav[name]) / float(asset.price)),
                                         account=form.account.data,
                                         type=form.type.data,
-                                        ticket_time = datetime.datetime.now()
+                                        ticket_time=datetime.datetime.now()
                                         )
                         db.session.add(ticket)
                         db.session.commit()
@@ -215,13 +226,14 @@ def execute():
     asset = Asset.query.filter_by(id=first_execution.asset_id).first()
     asset_holding = {}
     for client in all_clients:
-        asset_holding[client.client_name] = Holding.query.filter_by(asset_id=asset.id, client_id=client.id).first().quantity
+        asset_holding[client.client_name] = Holding.query.filter_by(asset_id=asset.id,
+                                                                    client_id=client.id).first().quantity
 
     order_execute = {}
     if request.method == "POST":
         if request.form.get('Refresh') == 'Refresh':
             for client in all_clients:
-                ticket_to_update = Ticket.query.filter_by(client_id = client.id).first()
+                ticket_to_update = Ticket.query.filter_by(client_id=client.id).first()
                 ticket_to_update.quantity = float(request.form.get(client.client_name))
                 ticket_to_update.price = float(request.form.get("price"))
                 db.session.commit()
@@ -296,9 +308,13 @@ def refresh():
         resp = requests.get(url, headers=headers)
         resp.raise_for_status()
         yahoo_data = resp.json()
+
+        asset_curr = Asset.query.filter_by(asset_name=asset.currency).first()
+        asset.price_PLN = asset.price * asset_curr.price
+        db.session.commit()
+
         try:
             asset.price = yahoo_data["quoteResponse"]["result"][0]["regularMarketPrice"]
-
         except:
             pass
         db.session.commit()

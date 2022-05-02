@@ -29,7 +29,7 @@
                 {% if client.id == holding.client_id and asset.id == holding.asset_id %}
                 {% for name in records.keys() %}
                 {% if name == client.client_name %}
-                <td>{{ '{:.2%}'.format((holding.quantity * asset.price)/records[name], 2) }}</td>
+                <td>{{ '{:.2%}'.format((holding.quantity * asset.price_PLN)/records[name], 2) }}</td>
                 {% endif %}
                 {% endfor %}
                 {% endif %}
